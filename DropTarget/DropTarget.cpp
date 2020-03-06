@@ -4,6 +4,8 @@
 
 *****************************************************************************/
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <windows.h>
 #include <windowsx.h>
 #include <shlobj.h>
@@ -26,65 +28,65 @@
 
 /*** gloval var definition **************************************************/
 
-UINT		g_cRefThisDll  = 0;		// Reference count of this DLL.
-HINSTANCE	g_hInstThisDll = NULL;	// Handle to this DLL itself.
+UINT		g_cRefThisDll  = 0;			// Reference count of this DLL.
+HINSTANCE	g_hInstThisDll = nullptr;	// Handle to this DLL itself.
 
 /*** search a ext ***********************************************************/
 
-char *SearchExt( char *szFile ){
-	char	*pExt;
+wchar_t *SearchExt( wchar_t *szFile ){
+	wchar_t	*pExt;
 	
 	return(
-		( UINT )( pExt = strrchr( szFile, '.' )) >
-		( UINT )strrchr( szFile, '\\' ) ?
-		pExt : NULL
+		( UINT )( pExt = wcsrchr( szFile, '.' )) >
+		( UINT )wcsrchr( szFile, '\\' ) ?
+		pExt : nullptr
 	);
 }
 
 /*** get a string from REGISTORY ********************************************/
 
-char *GetRegStr(
+wchar_t *GetRegStr(
 	HKEY	hKey,
 	LPTSTR	pSubKey,
 	LPTSTR	pValueName,
-	char	*szBuf ){
+	wchar_t	*szBuf ){
 	
 	HKEY	hSubKey;					/* for getting default action		*/
 	DWORD	dwBufSize = BUFSIZE;		/* data buf size for RegQueryValue	*/
 	
 	if( RegOpenKeyEx( hKey, pSubKey, 0, KEY_READ, &hSubKey )== ERROR_SUCCESS ){
 		LONG lResult = RegQueryValueEx(
-			hSubKey, pValueName, NULL, NULL,
+			hSubKey, pValueName, nullptr, nullptr,
 			( LPBYTE )szBuf, &dwBufSize
 		);
 		RegCloseKey( hSubKey );
-		return( lResult == ERROR_SUCCESS ? szBuf : NULL );
+		return( lResult == ERROR_SUCCESS ? szBuf : nullptr );
 	}
-	return( NULL );
+	return( nullptr );
 }
 
 /*** get default action of the file type ************************************/
 
-char *GetDefaultAction( char *szFile, char *szDst ){
+wchar_t *GetDefaultAction( wchar_t *szFile, wchar_t *szDst ){
 	
-	char	szVerb[ BUFSIZE ],
+	wchar_t	szVerb[ BUFSIZE ],
 			*pExt;
 	
 	if(( pExt = SearchExt( szFile ))&&
-		GetRegStr( HKEY_CLASSES_ROOT, pExt, NULL, szDst )){
+		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, szDst )){
 		
-		strcat( szDst, "\\shell" );
+		wcscat( szDst, L"\\shell" );
 		
-		if( GetRegStr( HKEY_CLASSES_ROOT, szDst, NULL, szVerb )){
-			strcat( strcat( strcat(
-				szDst, "\\" ), *szVerb ? szVerb : "open" ), "\\command" );
+		if( GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szVerb )){
+			wcscat( wcscat( wcscat(
+				szDst, L"\\" ), *szVerb ? szVerb : L"open" ), L"\\command" );
 			goto GetAction;
 		}
 	}
-	strcpy( szDst, "Unknown\\shell\\open\\command" );
+	wcscpy( szDst, L"Unknown\\shell\\open\\command" );
 	
   GetAction:
-	GetRegStr( HKEY_CLASSES_ROOT, szDst, NULL, szDst );
+	GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szDst );
 	return( szDst );
 }
 
@@ -107,7 +109,7 @@ STDAPI DllCanUnloadNow( void ){
 
 STDAPI DllGetClassObject( REFCLSID rclsid, REFIID riid, LPVOID *ppvOut ){
 	
-	*ppvOut = NULL;
+	*ppvOut = nullptr;
 	
 	if( IsEqualIID( rclsid, CLSID_DropTarget )){
 		CShellExtClassFactory *pcf = new CShellExtClassFactory;
@@ -132,7 +134,7 @@ STDMETHODIMP CShellExtClassFactory::QueryInterface(
 	REFIID		riid,
 	LPVOID FAR	*ppv ){
 	
-	*ppv = NULL;
+	*ppv = nullptr;
 	
 	// Any interface on this object is the object pointer
 	if(
@@ -162,7 +164,7 @@ STDMETHODIMP CShellExtClassFactory::CreateInstance(
 	REFIID		riid,
 	LPVOID		*ppvObj ){
 	
-	*ppvObj = NULL;
+	*ppvObj = nullptr;
 	
 	// Shell extensions typically don't support aggregation (inheritance)
 	
@@ -174,7 +176,7 @@ STDMETHODIMP CShellExtClassFactory::CreateInstance(
 	
 	LPCSHELLEXT pShellExt = new CShellExt();  //Create the CShellExt object
 	
-	if( NULL == pShellExt )	return( E_OUTOFMEMORY );
+	if( nullptr == pShellExt )	return( E_OUTOFMEMORY );
 	
 	return( pShellExt->QueryInterface( riid, ppvObj ));
 }
@@ -197,7 +199,7 @@ CShellExt::~CShellExt(){
 
 STDMETHODIMP CShellExt::QueryInterface( REFIID riid, LPVOID FAR *ppv ){
 	
-	*ppv = NULL;
+	*ppv = nullptr;
 	if     ( IsEqualIID( riid, IID_IUnknown     )) *ppv =( LPSHELLEXTINIT )this;
 	else if( IsEqualIID( riid, IID_IPersistFile )) *ppv =( LPPERSISTFILE  )this;
 	else if( IsEqualIID( riid, IID_IDropTarget  )) *ppv =( LPDROPTARGET   )this;
@@ -232,16 +234,7 @@ STDMETHODIMP CShellExt::IsDirty(){
 }
 
 STDMETHODIMP CShellExt::Load( LPCOLESTR lpszFileName, DWORD grfMode ){
-	WideCharToMultiByte(
-		CP_ACP,								// CodePage
-		0,									// dwFlags
-		lpszFileName,						// lpWideCharStr
-		-1,									// cchWideChar
-		m_szFileUserClickedOn,				// lpMultiByteStr
-		sizeof( m_szFileUserClickedOn ),	// cchMultiByte,
-		NULL,								// lpDefaultChar,
-		NULL );								// lpUsedDefaultChar
-	
+	wcscpy( m_szFileUserClickedOn, lpszFileName );
 	return NOERROR;
 }
 
@@ -292,7 +285,7 @@ STDMETHODIMP CShellExt::Drop(
 	STGMEDIUM	stgmed;
 	HRESULT		hrErr;
 	
-	char	szExecCmd[ BUFSIZE ],
+	wchar_t	szExecCmd[ BUFSIZE ],
 			szExecCmdLine[ CMDBUFSIZE ];
 	
 	STARTUPINFO			si;
@@ -303,7 +296,7 @@ STDMETHODIMP CShellExt::Drop(
 	// size for the drag feedback rectangle.
 	
 	fmtetc.cfFormat	= CF_HDROP;
-	fmtetc.ptd		= NULL;
+	fmtetc.ptd		= nullptr;
 	fmtetc.lindex	= -1;
 	fmtetc.dwAspect	= DVASPECT_CONTENT;
 	fmtetc.tymed	= TYMED_HGLOBAL;
@@ -317,10 +310,10 @@ STDMETHODIMP CShellExt::Drop(
 			/*** make command line ******************************************/
 			
 			GetDefaultAction( m_szFileUserClickedOn, szExecCmd );
-			if( !strstr( szExecCmd, "%1" )) strcat( szExecCmd, " \"%1\"" );
-			if( !strstr( szExecCmd, "%*" )) strcat( szExecCmd, " %*" );
+			if( !wcsstr( szExecCmd, L"%1" )) wcscat( szExecCmd, L" \"%1\"" );
+			if( !wcsstr( szExecCmd, L"%*" )) wcscat( szExecCmd, L" %*" );
 			
-			char	*pDropFileName,
+			wchar_t	*pDropFileName,
 					*pCmd	  = szExecCmd,
 					*pCmdLine = szExecCmdLine;
 			
@@ -330,41 +323,31 @@ STDMETHODIMP CShellExt::Drop(
 				if( *pCmd == '%' ){
 					switch( *++pCmd ){
 					  case '1':
-						strcpy( pCmdLine, m_szFileUserClickedOn );
-						pCmdLine = strchr( pCmdLine, '\0' );
+						wcscpy( pCmdLine, m_szFileUserClickedOn );
+						pCmdLine = wcschr( pCmdLine, '\0' );
 						
 					  Case '*':
 						*pCmdLine = '\0';
 						
 						if( pDropFiles->fWide ){
-							pwcDropFileName =( WCHAR *)(( char *)pDropFiles + pDropFiles->pFiles );
+							pwcDropFileName =( WCHAR *)(( wchar_t *)pDropFiles + pDropFiles->pFiles );
 							
 							for(; *pwcDropFileName; pwcDropFileName += wcslen( pwcDropFileName )+ 1 ){
-								strcat( pCmdLine, " \"" );
-								pCmdLine = strchr( pCmdLine, '\0' );
-								
-								WideCharToMultiByte(
-									CP_ACP,				// CodePage
-									0,					// dwFlags
-									pwcDropFileName,	// lpWideCharStr
-									-1,					// cchWideChar
-									pCmdLine,			// lpMultiByteStr
-									CMDBUFSIZE,			// cchMultiByte,
-									NULL,				// lpDefaultChar,
-									NULL );				// lpUsedDefaultChar
-								
-								strcat( pCmdLine, "\"" );
+								wcscat( pCmdLine, L" \"" );
+								pCmdLine = wcschr( pCmdLine, '\0' );
+								wcscpy( pCmdLine, pwcDropFileName );
+								wcscat( pCmdLine, L"\"" );
 							}
 						}else{
-							pDropFileName =( char *)pDropFiles + pDropFiles->pFiles;
+							pDropFileName =( wchar_t *)pDropFiles + pDropFiles->pFiles;
 							
-							for(; *pDropFileName; pDropFileName += strlen( pDropFileName )+ 1 ){
-								strcat( pCmdLine, " \"" );
-								strcat( pCmdLine, pDropFileName );
-								strcat( pCmdLine, "\"" );
+							for(; *pDropFileName; pDropFileName += wcslen( pDropFileName )+ 1 ){
+								wcscat( pCmdLine, L" \"" );
+								wcscat( pCmdLine, pDropFileName );
+								wcscat( pCmdLine, L"\"" );
 							}
 						}
-						pCmdLine = strchr( pCmdLine, '\0' );
+						pCmdLine = wcschr( pCmdLine, '\0' );
 						
 					  Default:
 						*pCmdLine++ = *pCmd;
@@ -380,11 +363,11 @@ STDMETHODIMP CShellExt::Drop(
 			
 			GetStartupInfo( &si );
 			CreateProcess(
-				NULL, szExecCmdLine,			/* exec file, params		*/
-				NULL, NULL,						/* securities				*/
+				nullptr, szExecCmdLine,			/* exec file, params		*/
+				nullptr, nullptr,						/* securities				*/
 				FALSE,							/* inherit flag				*/
 				NORMAL_PRIORITY_CLASS,			/* creation flags			*/
-				NULL, NULL,						/* env, cur.dir.			*/
+				nullptr, nullptr,						/* env, cur.dir.			*/
 				&si, &pi
 			);
 			CloseHandle( pi.hProcess );

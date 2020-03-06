@@ -72,9 +72,9 @@ typedef long long		INT64;
 		static T	szMsg[ DEBUG_SPRINTF_BUFSIZE ];
 		
 		if( sizeof( T ) == 1 ){
-			_vsnprintf( szMsg, DEBUG_SPRINTF_BUFSIZE, ( const char *)szFormat, arg );
+			_vsnprintf(( char *)szMsg, DEBUG_SPRINTF_BUFSIZE, ( const char *)szFormat, arg );
 		}else{
-			_vsnwprintf( szMsg, DEBUG_SPRINTF_BUFSIZE, ( const wchar_t *)szFormat, arg );
+			_vsnwprintf(( wchar_t *)szMsg, DEBUG_SPRINTF_BUFSIZE, ( const wchar_t *)szFormat, arg );
 		}
 		szMsg[ DEBUG_SPRINTF_BUFSIZE - 1 ] = '\0';
 		return( szMsg );
@@ -105,9 +105,9 @@ typedef long long		INT64;
 		
 		va_start( arg, szFormat );	
 		if( sizeof( T ) == 1 ){
-			MessageBoxA( NULL, DebugSPrintf( szFormat, arg ), DEBUG_MESSAGE_HEADER, MB_OK );
+			MessageBoxA( NULL, DebugSPrintf(( const char *)szFormat, arg ), DEBUG_MESSAGE_HEADER, MB_OK );
 		}else{
-			MessageBoxW( NULL, DebugSPrintf( szFormat, arg ), DEBUG_MESSAGE_HEADER_W, MB_OK );
+			MessageBoxW( NULL, DebugSPrintf(( const wchar_t *)szFormat, arg ), DEBUG_MESSAGE_HEADER_W, MB_OK );
 		}
 		va_end( arg );
 		
@@ -121,9 +121,9 @@ typedef long long		INT64;
 		
 		va_start( arg, szFormat );
 		if( sizeof( T ) == 1 ){
-			OutputDebugStringA( DebugSPrintf( szFormat, arg ));
+			OutputDebugStringA( DebugSPrintf(( const char *)szFormat, arg ));
 		}else{
-			OutputDebugStringW( DebugSPrintf( szFormat, arg ));
+			OutputDebugStringW( DebugSPrintf(( const wchar_t *)szFormat, arg ));
 		}
 		va_end( arg );
 		

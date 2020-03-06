@@ -35,7 +35,7 @@ typedef CShellExtClassFactory *LPCSHELLEXTCLASSFACTORY;
 class CShellExt : public IPersistFile, IDropTarget{
 protected:
 	ULONG			m_cRef;
-	char			m_szFileUserClickedOn[ MAX_PATH ];
+	wchar_t			m_szFileUserClickedOn[ MAX_PATH ];
 	
 public:
 	CShellExt();
