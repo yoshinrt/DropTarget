@@ -72,9 +72,9 @@ typedef long long		INT64;
 		static T	szMsg[ DEBUG_SPRINTF_BUFSIZE ];
 		
 		if( sizeof( T ) == 1 ){
-			_vsnprintf(( char *)szMsg, DEBUG_SPRINTF_BUFSIZE, ( const char *)szFormat, arg );
+			_vsnprintf_s(( char *)szMsg, DEBUG_SPRINTF_BUFSIZE, DEBUG_SPRINTF_BUFSIZE - 1, ( const char *)szFormat, arg );
 		}else{
-			_vsnwprintf(( wchar_t *)szMsg, DEBUG_SPRINTF_BUFSIZE, ( const wchar_t *)szFormat, arg );
+			_vsnwprintf_s(( wchar_t *)szMsg, DEBUG_SPRINTF_BUFSIZE, DEBUG_SPRINTF_BUFSIZE - 1, ( const wchar_t *)szFormat, arg );
 		}
 		szMsg[ DEBUG_SPRINTF_BUFSIZE - 1 ] = '\0';
 		return( szMsg );

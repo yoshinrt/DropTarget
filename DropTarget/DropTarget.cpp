@@ -4,8 +4,6 @@
 
 *****************************************************************************/
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <windows.h>
 #include <windowsx.h>
 #include <shlobj.h>
@@ -49,8 +47,8 @@ wchar_t *GetRegStr(
 	HKEY	hKey,
 	LPTSTR	pSubKey,
 	LPTSTR	pValueName,
-	wchar_t	*szBuf ){
-	
+	wchar_t	*szBuf
+){
 	HKEY	hSubKey;					/* for getting default action		*/
 	DWORD	dwBufSize = BUFSIZE;		/* data buf size for RegQueryValue	*/
 	
@@ -69,23 +67,26 @@ wchar_t *GetRegStr(
 
 wchar_t *GetDefaultAction( wchar_t *szFile, wchar_t *szDst ){
 	
-	wchar_t	szVerb[ BUFSIZE ],
-			*pExt;
+	wchar_t	szVerb[ BUFSIZE ];
+	wchar_t	*pExt;
 	
-	if(( pExt = SearchExt( szFile ))&&
-		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, szDst )){
+	if( !(
+		// HKLM\.ext を取得
+		( pExt = SearchExt( szFile )) &&
+		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, szDst ) &&
 		
-		wcscat( szDst, L"\\shell" );
+		// HKLM\extfile\shell を取得
+		wcscat_s( szDst, BUFSIZE, L"\\shell" ) == 0 &&
+		GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szVerb ) &&
 		
-		if( GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szVerb )){
-			wcscat( wcscat( wcscat(
-				szDst, L"\\" ), *szVerb ? szVerb : L"open" ), L"\\command" );
-			goto GetAction;
-		}
+		// HKLM\extfile\shell\open\command を取得
+		wcscat_s( szDst, BUFSIZE, L"\\" ) == 0 &&
+		wcscat_s( szDst, BUFSIZE, *szVerb ? szVerb : L"open" ) == 0 &&
+		wcscat_s( szDst, BUFSIZE, L"\\command" )
+	)){
+		wcscpy_s( szDst, BUFSIZE, L"Unknown\\shell\\open\\command" );
 	}
-	wcscpy( szDst, L"Unknown\\shell\\open\\command" );
 	
-  GetAction:
 	GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szDst );
 	return( szDst );
 }
@@ -95,8 +96,8 @@ wchar_t *GetDefaultAction( wchar_t *szFile, wchar_t *szDst ){
 int WINAPI DllMain(
 	HINSTANCE	hInstance,
 	DWORD		dwReason,
-	LPVOID		lpReserved ){
-	
+	LPVOID		lpReserved
+){
 	if( dwReason == DLL_PROCESS_ATTACH ) g_hInstThisDll = hInstance;
 	return( 1 );	// ok
 }
@@ -132,8 +133,8 @@ CShellExtClassFactory::~CShellExtClassFactory(){
 
 STDMETHODIMP CShellExtClassFactory::QueryInterface(
 	REFIID		riid,
-	LPVOID FAR	*ppv ){
-	
+	LPVOID FAR	*ppv
+){
 	*ppv = nullptr;
 	
 	// Any interface on this object is the object pointer
@@ -162,8 +163,8 @@ STDMETHODIMP_(ULONG) CShellExtClassFactory::Release(){
 STDMETHODIMP CShellExtClassFactory::CreateInstance(
 	LPUNKNOWN	pUnkOuter,
 	REFIID		riid,
-	LPVOID		*ppvObj ){
-	
+	LPVOID		*ppvObj
+){
 	*ppvObj = nullptr;
 	
 	// Shell extensions typically don't support aggregation (inheritance)
@@ -234,7 +235,7 @@ STDMETHODIMP CShellExt::IsDirty(){
 }
 
 STDMETHODIMP CShellExt::Load( LPCOLESTR lpszFileName, DWORD grfMode ){
-	wcscpy( m_szFileUserClickedOn, lpszFileName );
+	wcscpy_s( m_szFileUserClickedOn, MAX_PATH, lpszFileName );
 	return NOERROR;
 }
 
@@ -256,8 +257,8 @@ STDMETHODIMP CShellExt::DragEnter(
 	IDataObject	*pDataObject,
 	DWORD		grfKeyState,
 	POINTL		pt,
-	DWORD		*pdwEffect ){
-	
+	DWORD		*pdwEffect
+){
 	*pdwEffect = DROPEFFECT_MOVE;
 	return( S_OK );
 }
@@ -265,8 +266,8 @@ STDMETHODIMP CShellExt::DragEnter(
 STDMETHODIMP CShellExt::DragOver(
 	DWORD		grfKeyState,
 	POINTL		pt,
-	DWORD		*pdwEffect ){
-	
+	DWORD		*pdwEffect
+){
 	*pdwEffect = DROPEFFECT_MOVE;
 	return( S_OK );
 }
@@ -279,8 +280,8 @@ STDMETHODIMP CShellExt::Drop(
 	IDataObject	*pDataObject,
 	DWORD		grfKeyState,
 	POINTL		pt,
-	DWORD		*pdwEffect ){
-	
+	DWORD		*pdwEffect
+){
 	FORMATETC	fmtetc;
 	STGMEDIUM	stgmed;
 	HRESULT		hrErr;
@@ -310,8 +311,8 @@ STDMETHODIMP CShellExt::Drop(
 			/*** make command line ******************************************/
 			
 			GetDefaultAction( m_szFileUserClickedOn, szExecCmd );
-			if( !wcsstr( szExecCmd, L"%1" )) wcscat( szExecCmd, L" \"%1\"" );
-			if( !wcsstr( szExecCmd, L"%*" )) wcscat( szExecCmd, L" %*" );
+			if( !wcsstr( szExecCmd, L"%1" )) wcscat_s( szExecCmd, BUFSIZE, L" \"%1\"" );
+			if( !wcsstr( szExecCmd, L"%*" )) wcscat_s( szExecCmd, BUFSIZE, L" %*" );
 			
 			wchar_t	*pDropFileName,
 					*pCmd	  = szExecCmd,
@@ -323,7 +324,7 @@ STDMETHODIMP CShellExt::Drop(
 				if( *pCmd == '%' ){
 					switch( *++pCmd ){
 					  case '1':
-						wcscpy( pCmdLine, m_szFileUserClickedOn );
+						wcscpy_s( pCmdLine, CMDBUFSIZE, m_szFileUserClickedOn );
 						pCmdLine = wcschr( pCmdLine, '\0' );
 						
 					  Case '*':
@@ -333,18 +334,18 @@ STDMETHODIMP CShellExt::Drop(
 							pwcDropFileName =( WCHAR *)(( wchar_t *)pDropFiles + pDropFiles->pFiles );
 							
 							for(; *pwcDropFileName; pwcDropFileName += wcslen( pwcDropFileName )+ 1 ){
-								wcscat( pCmdLine, L" \"" );
+								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
 								pCmdLine = wcschr( pCmdLine, '\0' );
-								wcscpy( pCmdLine, pwcDropFileName );
-								wcscat( pCmdLine, L"\"" );
+								wcscpy_s( pCmdLine, CMDBUFSIZE, pwcDropFileName );
+								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
 							}
 						}else{
 							pDropFileName =( wchar_t *)pDropFiles + pDropFiles->pFiles;
 							
 							for(; *pDropFileName; pDropFileName += wcslen( pDropFileName )+ 1 ){
-								wcscat( pCmdLine, L" \"" );
-								wcscat( pCmdLine, pDropFileName );
-								wcscat( pCmdLine, L"\"" );
+								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
+								wcscat_s( pCmdLine, CMDBUFSIZE, pDropFileName );
+								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
 							}
 						}
 						pCmdLine = wcschr( pCmdLine, '\0' );
@@ -364,10 +365,10 @@ STDMETHODIMP CShellExt::Drop(
 			GetStartupInfo( &si );
 			CreateProcess(
 				nullptr, szExecCmdLine,			/* exec file, params		*/
-				nullptr, nullptr,						/* securities				*/
+				nullptr, nullptr,				/* securities				*/
 				FALSE,							/* inherit flag				*/
 				NORMAL_PRIORITY_CLASS,			/* creation flags			*/
-				nullptr, nullptr,						/* env, cur.dir.			*/
+				nullptr, nullptr,				/* env, cur.dir.			*/
 				&si, &pi
 			);
 			CloseHandle( pi.hProcess );
