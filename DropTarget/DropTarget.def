@@ -1,0 +1,8 @@
+﻿;DropTarget.def : Declares the module parameters for the DLL.
+
+LIBRARY      DropTarget
+;DESCRIPTION  'Shell Extension Drop Handler'
+
+EXPORTS
+	DllCanUnloadNow		@2	;DLL unloading
+	DllGetClassObject	@3	;Component object model
