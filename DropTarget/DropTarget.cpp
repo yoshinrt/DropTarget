@@ -7,7 +7,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shlobj.h>
-#include <string.h>
+#include <wchar.h>
 #include "dds.h"
 
 // Initialize GUIDs (should be done only and at-least once per DLL/EXE)
@@ -21,13 +21,87 @@
 
 /*** constant definition ****************************************************/
 
-#define BUFSIZE		256
-#define CMDBUFSIZE	1024
+#define BUFSIZE	256
 
 /*** gloval var definition **************************************************/
 
 UINT		g_cRefThisDll  = 0;			// Reference count of this DLL.
 HINSTANCE	g_hInstThisDll = nullptr;	// Handle to this DLL itself.
+
+/*** ローレベル string ******************************************************/
+
+class CBuffer {
+public:
+	CBuffer( size_t iSize = 0 ){
+		
+		if( iSize ){
+			m_pBuf = new wchar_t[ iSize ];
+			*m_pBuf = L'\0';
+		}
+		else m_pBuf = nullptr;
+		
+		m_iSize		= iSize;
+		m_iLength	= 0;
+	}
+	
+	~CBuffer(){
+		if( m_pBuf ) delete [] m_pBuf;
+		m_pBuf = nullptr;
+	}
+	
+	// iSize 以上で 2^n サイズ確保する
+	void Resize( size_t iSize ){
+		if( iSize <= m_iSize ) return;	// すでに確保済み
+		
+		// 2^n サイズ
+		for( m_iSize = BUFSIZE; m_iSize < iSize; m_iSize <<= 1 );
+		wchar_t *pTmp = new wchar_t[ m_iSize ];
+		
+		// コピー
+		if( m_pBuf ){
+			wmemcpy_s( pTmp, m_iSize, m_pBuf, m_iLength + 1 );
+			delete [] m_pBuf;
+		}else{
+			*pTmp		= L'\0';
+			m_iLength	= 0;
+		}
+		m_pBuf = pTmp;
+	}
+	
+	// cat
+	CBuffer& operator += ( const wchar_t *b ){
+		// バッファ伸長
+		size_t iStrLen = wcslen( b );
+		size_t iRequiredSize = m_iLength + iStrLen + 1;
+		if( m_iSize < iRequiredSize ) Resize( iRequiredSize );
+		
+		wmemcpy_s( m_pBuf + m_iLength, m_iSize - m_iLength, b, iStrLen + 1 );
+		m_iLength += iStrLen;
+		
+		return *this;
+	}
+	
+	CBuffer& operator += ( const wchar_t b ){
+		Resize( m_iLength + 2 );
+		
+		m_pBuf[ m_iLength++ ] = b;
+		m_pBuf[ m_iLength   ] = L'\0';
+		
+		return *this;
+	}
+	
+	CBuffer& Set( const wchar_t *b ){
+		if( m_pBuf ) *m_pBuf = L'\0';
+		*this += b;
+		return *this;
+	}
+	
+	// メンバ変数
+	
+	size_t	m_iSize;
+	size_t	m_iLength;
+	wchar_t* m_pBuf;
+};
 
 /*** search a ext ***********************************************************/
 
@@ -42,52 +116,63 @@ wchar_t *SearchExt( wchar_t *szFile ){
 
 /*** get a string from REGISTORY ********************************************/
 
-wchar_t *GetRegStr(
+BOOL GetRegStr(
 	HKEY	hKey,
 	LPTSTR	pSubKey,
 	LPTSTR	pValueName,
-	wchar_t	*szBuf
+	CBuffer	&strBuf
 ){
-	HKEY	hSubKey;					/* for getting default action		*/
-	DWORD	dwBufSize = BUFSIZE;		/* data buf size for RegQueryValue	*/
+	HKEY	hSubKey;	/* for getting default action		*/
+	DWORD	dwBufSize;	/* data buf size for RegQueryValue	*/
 	
-	if( RegOpenKeyEx( hKey, pSubKey, 0, KEY_READ, &hSubKey )== ERROR_SUCCESS ){
-		LONG lResult = RegQueryValueEx(
-			hSubKey, pValueName, nullptr, nullptr,
-			( LPBYTE )szBuf, &dwBufSize
-		);
-		RegCloseKey( hSubKey );
-		return( lResult == ERROR_SUCCESS ? szBuf : nullptr );
+	if( RegOpenKeyEx( hKey, pSubKey, 0, KEY_READ, &hSubKey ) != ERROR_SUCCESS ) return FALSE;
+	
+	LONG lResult;
+	
+	while( 1 ){
+		dwBufSize = ( DWORD )( strBuf.m_iSize * 2 );
+		
+		if(
+			( lResult = RegQueryValueEx(
+				hSubKey, pValueName, nullptr, nullptr,
+				( LPBYTE )strBuf.m_pBuf, &dwBufSize
+			)) != ERROR_MORE_DATA &&
+			strBuf.m_pBuf != nullptr
+		) break;
+		
+		strBuf.Resize( dwBufSize / 2 );
 	}
-	return( nullptr );
+	
+	RegCloseKey( hSubKey );
+	
+	strBuf.m_iLength = dwBufSize / 2 - 1;
+	
+	return lResult == ERROR_SUCCESS;
 }
 
 /*** get default action of the file type ************************************/
 
-wchar_t *GetDefaultAction( wchar_t *szFile, wchar_t *szDst ){
+BOOL GetDefaultAction( wchar_t *szFile, CBuffer &strDst ){
 	
-	wchar_t	szVerb[ BUFSIZE ];
+	CBuffer strVerb( BUFSIZE );
 	wchar_t	*pExt;
 	
-	if( !(
+	if(
 		// HKLM\.ext を取得
 		( pExt = SearchExt( szFile )) &&
-		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, szDst ) &&
-		
-		// HKLM\extfile\shell を取得
-		wcscat_s( szDst, BUFSIZE, L"\\shell" ) == 0 &&
-		GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szVerb ) &&
+		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, strDst )
+	){
+		strDst += L"\\shell";
+		BOOL bVerb = GetRegStr( HKEY_CLASSES_ROOT, strDst.m_pBuf, nullptr, strVerb );
 		
 		// HKLM\extfile\shell\open\command を取得
-		wcscat_s( szDst, BUFSIZE, L"\\" ) == 0 &&
-		wcscat_s( szDst, BUFSIZE, *szVerb ? szVerb : L"open" ) == 0 &&
-		wcscat_s( szDst, BUFSIZE, L"\\command" )
-	)){
-		wcscpy_s( szDst, BUFSIZE, L"Unknown\\shell\\open\\command" );
+		(( strDst += L"\\" ) += ( bVerb ? strVerb.m_pBuf : L"open" )) += L"\\command";
+	}else{
+		// unknown を取得
+		strDst.Set( L"Unknown\\shell\\open\\command" );
 	}
 	
-	GetRegStr( HKEY_CLASSES_ROOT, szDst, nullptr, szDst );
-	return( szDst );
+	return GetRegStr( HKEY_CLASSES_ROOT, strDst.m_pBuf, nullptr, strDst );
 }
 
 /*** DllMain ****************************************************************/
@@ -300,9 +385,6 @@ STDMETHODIMP CShellExt::Drop(
 	STGMEDIUM	stgmed;
 	HRESULT		hrErr;
 	
-	wchar_t	szExecCmd[ BUFSIZE ],
-			szExecCmdLine[ CMDBUFSIZE ];
-	
 	STARTUPINFO			si;
 	PROCESS_INFORMATION	pi;
 	
@@ -322,42 +404,45 @@ STDMETHODIMP CShellExt::Drop(
 		LPDROPFILES pDropFiles =( LPDROPFILES )GlobalLock( stgmed.hGlobal );
 		
 		if( pDropFiles ){
+			CBuffer strExecFile( BUFSIZE );
+			CBuffer strCmdLine( BUFSIZE );
+			
 			/*** make command line ******************************************/
 			
-			GetDefaultAction( m_pszFileUserClickedOn, szExecCmd );
+			GetDefaultAction( m_pszFileUserClickedOn, strExecFile );
 			
 			// %1 %* がないときは追加
-			if( !wcsstr( szExecCmd, L"%1" )) wcscat_s( szExecCmd, BUFSIZE, L" \"%1\"" );
-			if( !wcsstr( szExecCmd, L"%*" )) wcscat_s( szExecCmd, BUFSIZE, L" %*" );
+			if( !wcsstr( strExecFile.m_pBuf, L"%1" )) strExecFile += L" \"%1\"";
+			if( !wcsstr( strExecFile.m_pBuf, L"%*" )) strExecFile += L" %*";
 			
-			wchar_t	*pCmd	  = szExecCmd,
-					*pCmdLine = szExecCmdLine;
+			wchar_t	*pCmd	  = strExecFile.m_pBuf;
 			
 			for( ; *pCmd; ++pCmd ){
 				if( *pCmd == '%' ){
 					switch( *++pCmd ){
 					  case '1':
 						if( m_pszFileUserClickedOn ){
-							wcscpy_s( pCmdLine, CMDBUFSIZE, m_pszFileUserClickedOn );
+							strCmdLine += m_pszFileUserClickedOn;
 						}
-						pCmdLine = wcschr( pCmdLine, L'\0' );
 						
 					  Case '*':
-						*pCmdLine = L'\0';
-						
 						if( pDropFiles->fWide ){
 							wchar_t	*pwcDropFileName = ( wchar_t *)(( char *)pDropFiles + pDropFiles->pFiles );
 							
-							for(; *pwcDropFileName; pwcDropFileName += wcslen( pwcDropFileName )+ 1 ){
-								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
-								wcscpy_s( pCmdLine, CMDBUFSIZE, pwcDropFileName );
-								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
+							while( *pwcDropFileName ){
+								size_t iFileLen = wcslen( pwcDropFileName );
+								strCmdLine.Resize( strCmdLine.m_iLength + iFileLen + 3 + 1 );
+								
+								(( strCmdLine += L" \"" ) += pwcDropFileName ) += L"\"";
+								
+								pwcDropFileName += iFileLen + 1;
 							}
 						}else{
+							/* ★あとで
 							char *pDropFileName = ( char *)pDropFiles + pDropFiles->pFiles;
 							
 							for(; *pDropFileName; pDropFileName += strlen( pDropFileName )+ 1 ){
-								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
+								wcscat_s( pCmdLine, BUFSIZE, L" \"" );
 								
 								pCmdLine = wcschr( pCmdLine, L'\0' );
 								MultiByteToWideChar(
@@ -366,23 +451,23 @@ STDMETHODIMP CShellExt::Drop(
 									pDropFileName,		// lpMultiByteStr
 									-1,					// cbMultiByte
 									pCmdLine,			// lpWideCharStr
-									CMDBUFSIZE			// cchWideChar
+									BUFSIZE			// cchWideChar
 								);
 								
-								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
+								wcscat_s( pCmdLine, BUFSIZE, L"\"" );
 							}
+							*/
 						}
-						pCmdLine = wcschr( pCmdLine, L'\0' );
 						
 					  Default:
-						*pCmdLine++ = *pCmd;
+						strCmdLine += *pCmd;
 					}
 				}else{
-					*pCmdLine++ = *pCmd;
+					strCmdLine += *pCmd;
 				}
 			}
 			
-			DebugMsgW( szExecCmdLine );
+			DebugMsgW( strCmdLine.m_pBuf );
 			
 			if( m_pszFileUserClickedOn ){
 				delete [] m_pszFileUserClickedOn;
@@ -393,7 +478,7 @@ STDMETHODIMP CShellExt::Drop(
 			
 			GetStartupInfo( &si );
 			CreateProcess(
-				nullptr, szExecCmdLine,			/* exec file, params		*/
+				nullptr, strCmdLine.m_pBuf,		/* exec file, params		*/
 				nullptr, nullptr,				/* securities				*/
 				FALSE,							/* inherit flag				*/
 				NORMAL_PRIORITY_CLASS,			/* creation flags			*/
