@@ -35,8 +35,7 @@ wchar_t *SearchExt( wchar_t *szFile ){
 	wchar_t	*pExt;
 	
 	return(
-		( UINT )( pExt = wcsrchr( szFile, '.' )) >
-		( UINT )wcsrchr( szFile, '\\' ) ?
+		( pExt = wcsrchr( szFile, '.' )) > wcsrchr( szFile, '\\' ) ?
 		pExt : nullptr
 	);
 }
@@ -192,10 +191,16 @@ STDMETHODIMP CShellExtClassFactory::LockServer( BOOL fLock ){
 CShellExt::CShellExt(){
 	m_cRef = 0L;
 	g_cRefThisDll++;
+	m_pszFileUserClickedOn = nullptr;
 }
 
 CShellExt::~CShellExt(){
 	g_cRefThisDll--;
+	
+	if( m_pszFileUserClickedOn ){
+		delete [] m_pszFileUserClickedOn;
+		m_pszFileUserClickedOn = nullptr;
+	}
 }
 
 STDMETHODIMP CShellExt::QueryInterface( REFIID riid, LPVOID FAR *ppv ){
@@ -235,7 +240,16 @@ STDMETHODIMP CShellExt::IsDirty(){
 }
 
 STDMETHODIMP CShellExt::Load( LPCOLESTR lpszFileName, DWORD grfMode ){
-	wcscpy_s( m_szFileUserClickedOn, MAX_PATH, lpszFileName );
+	
+	if( m_pszFileUserClickedOn ){
+		delete [] m_pszFileUserClickedOn;
+		m_pszFileUserClickedOn = nullptr;
+	}
+	
+	size_t	nLen = wcslen( lpszFileName );
+	m_pszFileUserClickedOn = new wchar_t[ nLen + 1 ];
+	
+	wcscpy_s( m_pszFileUserClickedOn, nLen + 1, lpszFileName );
 	return NOERROR;
 }
 
@@ -310,45 +324,55 @@ STDMETHODIMP CShellExt::Drop(
 		if( pDropFiles ){
 			/*** make command line ******************************************/
 			
-			GetDefaultAction( m_szFileUserClickedOn, szExecCmd );
+			GetDefaultAction( m_pszFileUserClickedOn, szExecCmd );
+			
+			// %1 %* がないときは追加
 			if( !wcsstr( szExecCmd, L"%1" )) wcscat_s( szExecCmd, BUFSIZE, L" \"%1\"" );
 			if( !wcsstr( szExecCmd, L"%*" )) wcscat_s( szExecCmd, BUFSIZE, L" %*" );
 			
-			wchar_t	*pDropFileName,
-					*pCmd	  = szExecCmd,
+			wchar_t	*pCmd	  = szExecCmd,
 					*pCmdLine = szExecCmdLine;
 			
-			WCHAR	*pwcDropFileName;
-			
-			do{
+			for( ; *pCmd; ++pCmd ){
 				if( *pCmd == '%' ){
 					switch( *++pCmd ){
 					  case '1':
-						wcscpy_s( pCmdLine, CMDBUFSIZE, m_szFileUserClickedOn );
-						pCmdLine = wcschr( pCmdLine, '\0' );
+						if( m_pszFileUserClickedOn ){
+							wcscpy_s( pCmdLine, CMDBUFSIZE, m_pszFileUserClickedOn );
+						}
+						pCmdLine = wcschr( pCmdLine, L'\0' );
 						
 					  Case '*':
-						*pCmdLine = '\0';
+						*pCmdLine = L'\0';
 						
 						if( pDropFiles->fWide ){
-							pwcDropFileName =( WCHAR *)(( wchar_t *)pDropFiles + pDropFiles->pFiles );
+							wchar_t	*pwcDropFileName = ( wchar_t *)(( char *)pDropFiles + pDropFiles->pFiles );
 							
 							for(; *pwcDropFileName; pwcDropFileName += wcslen( pwcDropFileName )+ 1 ){
 								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
-								pCmdLine = wcschr( pCmdLine, '\0' );
 								wcscpy_s( pCmdLine, CMDBUFSIZE, pwcDropFileName );
 								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
 							}
 						}else{
-							pDropFileName =( wchar_t *)pDropFiles + pDropFiles->pFiles;
+							char *pDropFileName = ( char *)pDropFiles + pDropFiles->pFiles;
 							
-							for(; *pDropFileName; pDropFileName += wcslen( pDropFileName )+ 1 ){
+							for(; *pDropFileName; pDropFileName += strlen( pDropFileName )+ 1 ){
 								wcscat_s( pCmdLine, CMDBUFSIZE, L" \"" );
-								wcscat_s( pCmdLine, CMDBUFSIZE, pDropFileName );
+								
+								pCmdLine = wcschr( pCmdLine, L'\0' );
+								MultiByteToWideChar(
+									CP_ACP,				// CodePage
+									0,					// dwFlags
+									pDropFileName,		// lpMultiByteStr
+									-1,					// cbMultiByte
+									pCmdLine,			// lpWideCharStr
+									CMDBUFSIZE			// cchWideChar
+								);
+								
 								wcscat_s( pCmdLine, CMDBUFSIZE, L"\"" );
 							}
 						}
-						pCmdLine = wcschr( pCmdLine, '\0' );
+						pCmdLine = wcschr( pCmdLine, L'\0' );
 						
 					  Default:
 						*pCmdLine++ = *pCmd;
@@ -356,9 +380,14 @@ STDMETHODIMP CShellExt::Drop(
 				}else{
 					*pCmdLine++ = *pCmd;
 				}
-			}while( *pCmd++ );
+			}
 			
 			DebugMsgW( szExecCmdLine );
+			
+			if( m_pszFileUserClickedOn ){
+				delete [] m_pszFileUserClickedOn;
+				m_pszFileUserClickedOn = nullptr;
+			}
 			
 			/*** create process *********************************************/
 			

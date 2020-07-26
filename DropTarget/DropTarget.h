@@ -35,7 +35,7 @@ typedef CShellExtClassFactory *LPCSHELLEXTCLASSFACTORY;
 class CShellExt : public IPersistFile, IDropTarget{
 protected:
 	ULONG			m_cRef;
-	wchar_t			m_szFileUserClickedOn[ MAX_PATH ];
+	wchar_t			*m_pszFileUserClickedOn;
 	
 public:
 	CShellExt();
@@ -55,24 +55,24 @@ public:
 	STDMETHODIMP GetCurFile( LPOLESTR FAR* lplpszFileName );
 	
 	//IDropTarget
-	STDMETHODIMP			DragEnter(
-								IDataObject	*pDataObject,
-								DWORD		grfKeyState,
-								POINTL		pt,
-								DWORD		*pdwEffect );
+	STDMETHODIMP	DragEnter(
+						IDataObject	*pDataObject,
+						DWORD		grfKeyState,
+						POINTL		pt,
+						DWORD		*pdwEffect );
 	
-	STDMETHODIMP			DragOver(
-								DWORD		grfKeyState,
-								POINTL		pt,
-								DWORD		*pdwEffect );
+	STDMETHODIMP	DragOver(
+						DWORD		grfKeyState,
+						POINTL		pt,
+						DWORD		*pdwEffect );
 	
-	STDMETHODIMP			DragLeave( void );
+	STDMETHODIMP	DragLeave( void );
 	
-	STDMETHODIMP			Drop(
-								IDataObject	*pDataObject,
-								DWORD		grfKeyState,
-								POINTL		pt,
-								DWORD		*pdwEffect );
+	STDMETHODIMP	Drop(
+						IDataObject	*pDataObject,
+						DWORD		grfKeyState,
+						POINTL		pt,
+						DWORD		*pdwEffect );
 };
 
 typedef CShellExt *LPCSHELLEXT;
