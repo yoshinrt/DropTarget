@@ -50,11 +50,18 @@ public:
 	}
 	
 	// iSize 以上で 2^n サイズ確保する
-	void Resize( size_t iSize ){
-		if( iSize <= m_iSize ) return;	// すでに確保済み
+	BOOL Resize( size_t iSize ){
+		if( iSize <= m_iSize ) return TRUE;	// すでに確保済み
 		
 		// 2^n サイズ
-		for( m_iSize = BUFSIZE; m_iSize < iSize; m_iSize <<= 1 );
+		for( m_iSize = BUFSIZE; m_iSize < iSize; m_iSize <<= 1 ){
+			// 最大 16MB
+			if( iSize > 8 * 1024 * 1024 ){
+				m_iSize >>= 1;
+				return FALSE;
+			}
+		}
+		
 		wchar_t *pTmp = new wchar_t[ m_iSize ];
 		
 		// コピー
@@ -66,6 +73,8 @@ public:
 			m_iLength	= 0;
 		}
 		m_pBuf = pTmp;
+		
+		return TRUE;
 	}
 	
 	// cat
@@ -82,7 +91,7 @@ public:
 	}
 	
 	CBuffer& operator += ( const wchar_t b ){
-		Resize( m_iLength + 2 );
+		if( !Resize( m_iLength + 2 )) return *this;
 		
 		m_pBuf[ m_iLength++ ] = b;
 		m_pBuf[ m_iLength   ] = L'\0';
@@ -140,7 +149,10 @@ BOOL GetRegStr(
 			strBuf.m_pBuf != nullptr
 		) break;
 		
-		strBuf.Resize( dwBufSize / 2 );
+		if( !strBuf.Resize( dwBufSize / 2 )){
+			lResult = ~ERROR_SUCCESS;
+			break;
+		}
 	}
 	
 	RegCloseKey( hSubKey );
@@ -431,32 +443,46 @@ STDMETHODIMP CShellExt::Drop(
 							
 							while( *pwcDropFileName ){
 								size_t iFileLen = wcslen( pwcDropFileName );
-								strCmdLine.Resize( strCmdLine.m_iLength + iFileLen + 3 + 1 );
+								if( !strCmdLine.Resize( strCmdLine.m_iLength + iFileLen + 3 + 1 )) break;
 								
-								(( strCmdLine += L" \"" ) += pwcDropFileName ) += L"\"";
+								(( strCmdLine += L" \"" ) += pwcDropFileName ) += L'\"';
 								
 								pwcDropFileName += iFileLen + 1;
 							}
 						}else{
-							/* ★あとで
 							char *pDropFileName = ( char *)pDropFiles + pDropFiles->pFiles;
 							
-							for(; *pDropFileName; pDropFileName += strlen( pDropFileName )+ 1 ){
-								wcscat_s( pCmdLine, BUFSIZE, L" \"" );
+							while( *pDropFileName ){
 								
-								pCmdLine = wcschr( pCmdLine, L'\0' );
-								MultiByteToWideChar(
-									CP_ACP,				// CodePage
-									0,					// dwFlags
-									pDropFileName,		// lpMultiByteStr
-									-1,					// cbMultiByte
-									pCmdLine,			// lpWideCharStr
-									BUFSIZE			// cchWideChar
+								// wchar 文字数 (null を含む)
+								int iFileLen = MultiByteToWideChar(
+									CP_ACP,										// CodePage
+									0,											// dwFlags
+									pDropFileName,								// lpMultiByteStr
+									-1,											// cbMultiByte
+									nullptr,									// lpWideCharStr
+									0											// cchWideChar
 								);
 								
-								wcscat_s( pCmdLine, BUFSIZE, L"\"" );
+								if( !strCmdLine.Resize( strCmdLine.m_iLength + iFileLen + 3 )) break;
+								
+								strCmdLine += L" \"";
+								
+								// 変換
+								MultiByteToWideChar(
+									CP_ACP,										// CodePage
+									0,											// dwFlags
+									pDropFileName,								// lpMultiByteStr
+									-1,											// cbMultiByte
+									strCmdLine.m_pBuf + strCmdLine.m_iLength,	// lpWideCharStr
+									strCmdLine.m_iSize - strCmdLine.m_iLength	// cchWideChar
+								);
+								
+								strCmdLine += L'\"';
+								
+								pDropFileName += strlen( pDropFileName ) + 1;
+								strCmdLine.m_iLength += iFileLen - 1;
 							}
-							*/
 						}
 						
 					  Default:
