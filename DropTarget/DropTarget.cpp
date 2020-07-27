@@ -441,7 +441,11 @@ STDMETHODIMP CShellExt::Drop(
 			GetDefaultAction( m_pszFileUserClickedOn, strExecFile );
 			
 			// %1 %* がないときは追加
-			if( !wcsstr( strExecFile.m_pBuf, L"%1" )) strExecFile += L" \"%1\"";
+			if(
+				!wcsstr( strExecFile.m_pBuf, L"%1" ) &&
+				!wcsstr( strExecFile.m_pBuf, L"%L" )
+			) strExecFile += L" \"%1\"";
+			
 			if( !wcsstr( strExecFile.m_pBuf, L"%*" )) strExecFile += L" %*";
 			
 			wchar_t	*pCmd	  = strExecFile.m_pBuf;
@@ -450,6 +454,7 @@ STDMETHODIMP CShellExt::Drop(
 				if( *pCmd == '%' ){
 					switch( *++pCmd ){
 					  case '1':
+					  case 'L':
 						if( m_pszFileUserClickedOn ){
 							strCmdLine += m_pszFileUserClickedOn;
 						}
