@@ -184,11 +184,14 @@ BOOL GetRegStr(
 BOOL GetDefaultAction( wchar_t *szFile, CBuffer &strDst ){
 	
 	CBuffer strVerb( BUFSIZE );
-	wchar_t	*pExt;
+	wchar_t	*pExt = SearchExt( szFile );
 	
-	if(
+	if( _wcsicmp( pExt, L".hta" ) == 0 ){
+		// .hta は変な GUID が付いているので特殊対応
+		strDst.Set( L"mshta" );
+	}else if(
 		// HKLM\.ext を取得
-		( pExt = SearchExt( szFile )) &&
+		pExt &&
 		GetRegStr( HKEY_CLASSES_ROOT, pExt, nullptr, strDst )
 	){
 		strDst += L"\\shell";
