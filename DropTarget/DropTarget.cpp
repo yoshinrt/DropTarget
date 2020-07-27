@@ -136,14 +136,15 @@ BOOL GetRegStr(
 	
 	if( RegOpenKeyEx( hKey, pSubKey, 0, KEY_READ, &hSubKey ) != ERROR_SUCCESS ) return FALSE;
 	
-	LONG lResult;
+	LONG	lResult;
+	DWORD	dwType;
 	
 	while( 1 ){
 		dwBufSize = ( DWORD )( strBuf.m_iSize * 2 );
 		
 		if(
 			( lResult = RegQueryValueEx(
-				hSubKey, pValueName, nullptr, nullptr,
+				hSubKey, pValueName, nullptr, &dwType,
 				( LPBYTE )strBuf.m_pBuf, &dwBufSize
 			)) != ERROR_MORE_DATA &&
 			strBuf.m_pBuf != nullptr
@@ -159,7 +160,23 @@ BOOL GetRegStr(
 	
 	strBuf.m_iLength = dwBufSize / 2 - 1;
 	
-	return lResult == ERROR_SUCCESS;
+	if( lResult != ERROR_SUCCESS ) return FALSE;
+	
+	// 環境変数展開
+	if( dwType == REG_EXPAND_SZ ){
+		wchar_t *szPreExpand = strBuf.m_pBuf;
+		
+		strBuf.m_pBuf		= nullptr;
+		strBuf.m_iSize		= 0;
+		strBuf.m_iLength	= 0;
+		
+		strBuf.Resize( ExpandEnvironmentStrings( szPreExpand, nullptr, 0 ));
+		ExpandEnvironmentStrings( szPreExpand, strBuf.m_pBuf, strBuf.m_iSize );
+		
+		delete [] szPreExpand;
+	}
+	
+	return TRUE;
 }
 
 /*** get default action of the file type ************************************/
@@ -493,7 +510,7 @@ STDMETHODIMP CShellExt::Drop(
 				}
 			}
 			
-			DebugMsgW( strCmdLine.m_pBuf );
+			DebugMsgD( strCmdLine.m_pBuf );
 			
 			if( m_pszFileUserClickedOn ){
 				delete [] m_pszFileUserClickedOn;
